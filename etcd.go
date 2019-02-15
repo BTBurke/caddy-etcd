@@ -68,8 +68,7 @@ type etcdsrv struct {
 	mdPrefix string
 	lockKey  string
 	cfg      *ClusterConfig
-	client   *client.KeysAPI
-	// set noBackoff to true to disable exponetial backoff retries
+	// set noBackoff to true to disable exponential backoff retries
 	noBackoff bool
 }
 
@@ -87,6 +86,7 @@ func NewService(c *ClusterConfig) Service {
 	}
 }
 
+// Lock acquires a lock with a maximum lifetime specified by the ClusterConfig
 func (e *etcdsrv) Lock() error {
 	return e.lock(token)
 }
@@ -155,16 +155,10 @@ func (e *etcdsrv) lock(t string) error {
 		}
 		return errors.New("lock: failed to obtain lock, already exists")
 	}
-	switch e.noBackoff {
-	case true:
-		return acquire()
-	default:
-		return backoff.Retry(acquire, backoff.NewExponentialBackOff())
-	}
-
+	return e.execute(acquire)
 }
 
-// Unlock
+// Unlock releases the current lock
 func (e *etcdsrv) Unlock() error {
 	c, err := getClient(e.cfg)
 	if err != nil {
@@ -176,12 +170,7 @@ func (e *etcdsrv) Unlock() error {
 		}
 		return nil
 	}
-	switch e.noBackoff {
-	case true:
-		return release()
-	default:
-		return backoff.Retry(release, backoff.NewExponentialBackOff())
-	}
+	return e.execute(release)
 }
 
 func (e *etcdsrv) get(key string, dst *bytes.Buffer) backoff.Operation {
@@ -276,6 +265,16 @@ func (e *etcdsrv) getMD(key string, m *Metadata) backoff.Operation {
 	}
 }
 
+// execute will use exponential backoff when configured
+func (e *etcdsrv) execute(o backoff.Operation) error {
+	switch e.noBackoff {
+	case true:
+		return o()
+	default:
+		return backoff.Retry(o, backoff.NewExponentialBackOff())
+	}
+}
+
 func (e *etcdsrv) Store(key string, value []byte) error {
 	return nil
 }
@@ -286,39 +285,4 @@ func (e *etcdsrv) Load(key string) ([]byte, error) {
 
 func (e *etcdsrv) Metadata(key string) (*Metadata, error) {
 	return nil, nil
-}
-
-func tx(txs ...backoff.Operation) []backoff.Operation {
-	return txs
-}
-
-func pipeline(commits []backoff.Operation, rollbacks []backoff.Operation, b backoff.BackOff) error {
-	var err error
-	for idx, commit := range commits {
-		err = backoff.Retry(commit, b)
-		if err != nil {
-			for i := idx - 1; i >= 0; i-- {
-				switch {
-				case i >= len(rollbacks):
-					continue
-				default:
-					if errR := backoff.Retry(rollbacks[i], b); errR != nil {
-						err = errors.Wrapf(err, "error on rollback: %s", errR)
-					}
-				}
-			}
-			break
-		}
-	}
-	return err
-}
-
-func getClient(c *ClusterConfig) (client.KeysAPI, error) {
-	cli, err := client.New(client.Config{
-		Endpoints: c.ServerIP,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to instantiate etcd client")
-	}
-	return client.NewKeysAPI(cli), nil
 }
