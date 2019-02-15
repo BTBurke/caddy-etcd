@@ -19,7 +19,7 @@ type ConfigOption func(c *ClusterConfig) error
 func NewClusterConfig(opts ...ConfigOption) (*ClusterConfig, error) {
 	c := &ClusterConfig {
 		KeyPrefix: "/caddy",
-		LockTimeout: time.Duration(5 * time.Minute),
+		LockTimeout: 5 * time.Minute,
 	}
 	for _, opt := range opts {
 		if err := opt(c); err != nil {
