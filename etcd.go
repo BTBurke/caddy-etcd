@@ -34,6 +34,7 @@ func init() {
 type Lock struct {
 	Token    string
 	Obtained string
+	Key      string
 }
 
 // Metadata stores information about a particular node that represents a file in etcd
@@ -60,8 +61,8 @@ type Service interface {
 	Store(key string, value []byte) error
 	Load(key string) ([]byte, error)
 	Metadata(key string) (*Metadata, error)
-	Lock() error
-	Unlock() error
+	Lock(key string) error
+	Unlock(key string) error
 }
 
 type etcdsrv struct {
@@ -87,19 +88,19 @@ func NewService(c *ClusterConfig) Service {
 }
 
 // Lock acquires a lock with a maximum lifetime specified by the ClusterConfig
-func (e *etcdsrv) Lock() error {
-	return e.lock(token)
+func (e *etcdsrv) Lock(key string) error {
+	return e.lock(token, key)
 }
 
 // Lock acquires a lock with a maximum lifetime specified by the ClusterConfig
-func (e *etcdsrv) lock(t string) error {
+func (e *etcdsrv) lock(tok string, key string) error {
 	c, err := getClient(e.cfg)
 	if err != nil {
 		return errors.Wrap(err, "failed to create etcd client while getting lock")
 	}
 	acquire := func() error {
 		var okToSet bool
-		resp, err := c.Get(context.Background(), e.lockKey, nil)
+		resp, err := c.Get(context.Background(), path.Join(e.lockKey, key), nil)
 		if err != nil {
 			switch {
 			// no existing lock
@@ -125,7 +126,7 @@ func (e *etcdsrv) lock(t string) error {
 			}
 			switch {
 			// lock request from same client extend existing lock
-			case l.Token == t:
+			case l.Token == tok:
 				okToSet = true
 				break
 			// orphaned locks that are past lock timeout allow new lock
@@ -141,14 +142,15 @@ func (e *etcdsrv) lock(t string) error {
 				return errors.Wrap(err, "lock: failed to marshal current UTC time")
 			}
 			l := Lock{
-				Token:    t,
+				Token:    tok,
 				Obtained: string(now),
+				Key:      key,
 			}
 			b, err := json.Marshal(l)
 			if err != nil {
 				return errors.Wrap(err, "lock: failed to marshal new lock")
 			}
-			if _, err := c.Set(context.Background(), e.lockKey, base64.StdEncoding.EncodeToString(b), nil); err != nil {
+			if _, err := c.Set(context.Background(), path.Join(e.lockKey, key), base64.StdEncoding.EncodeToString(b), nil); err != nil {
 				return errors.Wrap(err, "failed to get lock")
 			}
 			return nil
@@ -159,13 +161,13 @@ func (e *etcdsrv) lock(t string) error {
 }
 
 // Unlock releases the current lock
-func (e *etcdsrv) Unlock() error {
+func (e *etcdsrv) Unlock(key string) error {
 	c, err := getClient(e.cfg)
 	if err != nil {
 		return errors.Wrap(err, "failed to create etcd client while getting lock")
 	}
 	release := func() error {
-		if _, err := c.Delete(context.Background(), e.lockKey, nil); err != nil {
+		if _, err := c.Delete(context.Background(), path.Join(e.lockKey, key), nil); err != nil {
 			return errors.Wrap(err, "failed to release lock")
 		}
 		return nil

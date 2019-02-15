@@ -33,15 +33,17 @@ func TestLockUnlock(t *testing.T) {
 		noBackoff: true,
 	}
 	type lockFunc func(d time.Duration) error
-	lock := func(t string) lockFunc {
+	lock := func(t string, key string) lockFunc {
 		return func(d time.Duration) error {
 			cli.cfg.LockTimeout = d
-			return cli.lock(t)
+			return cli.lock(t, key)
 		}
 	}
-	unlock := func(d time.Duration) error {
-		cli.cfg.LockTimeout = d
-		return cli.Unlock()
+	unlock := func(key string) lockFunc {
+		return func(d time.Duration) error {
+			cli.cfg.LockTimeout = d
+			return cli.Unlock(key)
+		}
 	}
 	wait := func(d time.Duration) lockFunc {
 		return func(d2 time.Duration) error {
@@ -56,10 +58,11 @@ func TestLockUnlock(t *testing.T) {
 		Funcs     []lockFunc
 		ShouldErr bool
 	}{
-		{Name: "Lock Unlock", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test"), unlock}, ShouldErr: false},
-		{Name: "Lock while locked different clients", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test"), lock("test2")}, ShouldErr: true},
-		{Name: "Lock after timeout", Timeout: 1 * time.Second, Funcs: []lockFunc{lock("test"), wait(2 * time.Second), lock("test")}, ShouldErr: false},
-		{Name: "Lock while locked extend lock", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test"), lock("test")}, ShouldErr: false},
+		{Name: "Lock Unlock", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test", "/path/one.md"), unlock("/path/one.md")}, ShouldErr: false},
+		{Name: "Lock while locked different clients", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test", "/path/one.md"), lock("test2", "/path/one.md")}, ShouldErr: true},
+		{Name: "Lock after timeout", Timeout: 1 * time.Second, Funcs: []lockFunc{lock("test", "/path/one.md"), wait(2 * time.Second), lock("test", "/path/one.md")}, ShouldErr: false},
+		{Name: "Lock while locked extend lock", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test", "/path/one.md"), lock("test", "/path/one.md")}, ShouldErr: false},
+		{Name: "Locks on different paths", Timeout: 5 * time.Second, Funcs: []lockFunc{lock("test", "/path/one.md"), lock("test", "/path/two.md")}, ShouldErr: false},
 	}
 	for _, tc := range tcs {
 		t.Run(tc.Name, func(t *testing.T) {
@@ -67,7 +70,7 @@ func TestLockUnlock(t *testing.T) {
 			if errL != nil {
 				t.Fail()
 			}
-			_ = del(cliL, cfg.KeyPrefix+"/lock")
+			_ = del(cliL, cfg.KeyPrefix+"/lock/path/one.md")
 			var err error
 			for _, f := range tc.Funcs {
 				err = f(tc.Timeout)
