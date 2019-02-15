@@ -37,7 +37,7 @@ type Lock struct {
 
 // Metadata stores information about a particular node that represents a file in etcd
 type Metadata struct {
-	Key       string
+	Path      string
 	Size      int
 	Timestamp time.Time
 	Hash      [20]byte
@@ -45,9 +45,9 @@ type Metadata struct {
 
 // NewMetadata returns a metadata information given a path and a file to be stored at the path.
 // Typically, one metadata node is stored for each file node in etcd.
-func NewMetadata(key string, data []byte) *Metadata {
-	return &Metadata{
-		Key:       key,
+func NewMetadata(key string, data []byte) Metadata {
+	return Metadata{
+		Path:      key,
 		Size:      len(data),
 		Timestamp: time.Now().UTC(),
 		Hash:      sha1.Sum(data),

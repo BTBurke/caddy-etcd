@@ -2,9 +2,11 @@ package etcd
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"path"
 	"testing"
@@ -77,16 +79,17 @@ func TestLowLevelSet(t *testing.T) {
 	}{
 		{Path: "test", Value: []byte("test")},
 		{Path: "/test", Value: []byte("test")},
-		{Path: "/deeply/nested/value", Value: []byte("test")},
+		{Path: "/deeply/nested/value.md", Value: []byte("test")},
 	}
 	for _, tc := range tcs {
 		cli, err := getClient(cfg)
 		assert.NoError(t, err)
-		errC := set(cli, cfg.KeyPrefix+tc.Path, tc.Value)()
+		errC := set(cli, path.Join(cfg.KeyPrefix, tc.Path), tc.Value)()
 		assert.NoError(t, errC)
-		resp, err := http.Get("http://127.0.0.1:2379/v2/keys/caddy/" + tc.Path)
+		resp, err := http.Get("http://127.0.0.1:2379" + path.Join("/v2/keys/caddy/", tc.Path))
 		if err != nil {
-			t.Fail()
+			log.Print(err)
+			t.FailNow()
 		}
 		defer resp.Body.Close()
 		body, err := ioutil.ReadAll(resp.Body)
@@ -97,7 +100,6 @@ func TestLowLevelSet(t *testing.T) {
 		if err := json.Unmarshal(body, &node); err != nil {
 			t.Fail()
 		}
-		//t.Logf("resp: key: %v value: %v\n", node.Node.Key, node.Node.Value)
 		assert.Equal(t, path.Join("/caddy", tc.Path), node.Node.Key)
 		assert.Equal(t, base64.StdEncoding.EncodeToString(tc.Value), node.Node.Value)
 	}
@@ -136,4 +138,38 @@ func TestLowLevelGet(t *testing.T) {
 		assert.NoError(t, errC)
 		assert.Equal(t, tc.Value, resp)
 	}
+}
+
+func TestLowLevelMD(t *testing.T) {
+
+	if !shouldRunIntegration() {
+		t.Skip("no etcd server found, skipping")
+	}
+	cfg := &ClusterConfig{
+		KeyPrefix: "/caddy",
+		ServerIP:  []string{"http://127.0.0.1:2379"},
+	}
+	data := []byte("test data")
+	expSum := sha1.Sum(data)
+	p := "/some/path/key.md"
+	key := path.Join(cfg.KeyPrefix, p)
+	md := NewMetadata(p, data)
+	assert.Equal(t, p, md.Path)
+	assert.Equal(t, expSum, md.Hash)
+	assert.Equal(t, len(data), md.Size)
+	cli, err := getClient(cfg)
+	if err != nil {
+		t.Fail()
+	}
+	if err := setMD(cli, key, md)(); err != nil {
+		assert.NoError(t, err)
+	}
+	var md2 Metadata
+	if err := getMD(cli, key, &md2)(); err != nil {
+		assert.NoError(t, err)
+	}
+	assert.Equal(t, md, md2)
+	assert.Equal(t, expSum, md2.Hash)
+	assert.Equal(t, len(data), md2.Size)
+	assert.Equal(t, p, md2.Path)
 }
