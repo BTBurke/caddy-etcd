@@ -183,6 +183,8 @@ func (e *etcdsrv) execute(o backoff.Operation) error {
 	}
 }
 
+// Store stores a value at key. This function attempts to rollback to a prior value
+// if there is an error in the transaction.
 func (e *etcdsrv) Store(key string, value []byte) error {
 	cli, err := getClient(e.cfg)
 	if err != nil {
@@ -211,6 +213,9 @@ func (e *etcdsrv) Store(key string, value []byte) error {
 	return pipeline(commits, rollbacks, backoff.NewExponentialBackOff())
 }
 
+// Load will load the value at key.  If the key does not exist, `NotExist` error is returned.
+// Checksums of the value loaded are checked against the SHA1 hash in the metadata.  If they do not
+// match, a `FailedChecksum` error is returned.
 func (e *etcdsrv) Load(key string) ([]byte, error) {
 	cli, err := getClient(e.cfg)
 	if err != nil {
@@ -242,6 +247,8 @@ func (e *etcdsrv) Load(key string) ([]byte, error) {
 	return value, nil
 }
 
+// Metadata will load the metadata associated with the data at node key.  If the
+// node does not exist, a `NotExist` error is returned and the metadata will be nil.
 func (e *etcdsrv) Metadata(key string) (*Metadata, error) {
 	cli, err := getClient(e.cfg)
 	if err != nil {

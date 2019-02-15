@@ -124,17 +124,17 @@ func noop() backoff.Operation {
 
 func exists(cli client.KeysAPI, key string, out *bool) backoff.Operation {
 	return func() error {
-		resp, err := cli.Get(context.Background(), key, nil)
+		_, err := cli.Get(context.Background(), key, nil)
 		if err != nil {
-			return errors.Wrap(err, "exists: failed to check key")
+			switch {
+			case client.IsKeyNotFound(err):
+				*out = false
+				return nil
+			default:
+				return errors.Wrap(err, "exists: failed to check key")
+			}
 		}
-		switch {
-		case resp.Node == nil:
-			*out = false
-			break
-		default:
-			*out = true
-		}
+		*out = true
 		return nil
 	}
 }
