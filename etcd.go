@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
 	"log"
@@ -27,15 +28,35 @@ func init() {
 	token = base64.StdEncoding.EncodeToString(tok)
 }
 
+// Lock is a clients lock on updating keys.  When the same client requests multiple locks, the
+// lock is extended.  Assumes that one client does not try to set the same key from different
+// go routines.  In this case, a race condition exists and last write wins.
+type Lock struct {
+	Token    string
+	Obtained string
+}
+
 // Metadata stores information about a particular node that represents a file in etcd
 type Metadata struct {
 	Key       string
-	Size      int32
+	Size      int
 	Timestamp time.Time
+	Hash      [20]byte
 }
 
-// EtcdService is a low level interface that stores and loads values in Etcd
-type EtcdService interface {
+// NewMetadata returns a metadata information given a path and a file to be stored at the path.
+// Typically, one metadata node is stored for each file node in etcd.
+func NewMetadata(key string, data []byte) *Metadata {
+	return &Metadata{
+		Key:       key,
+		Size:      len(data),
+		Timestamp: time.Now().UTC(),
+		Hash:      sha1.Sum(data),
+	}
+}
+
+// Service is a low level interface that stores and loads values in Etcd
+type Service interface {
 	Store(key string, value []byte) error
 	Load(key string) ([]byte, error)
 	Metadata(key string) (*Metadata, error)
@@ -45,41 +66,102 @@ type EtcdService interface {
 
 type etcdsrv struct {
 	mdPrefix string
-	lock     string
+	lockKey  string
 	cfg      *ClusterConfig
 	client   *client.KeysAPI
+	// set noBackoff to true to disable exponetial backoff retries
+	noBackoff bool
 }
 
-// NewEtcdService returns a new low level service to store and load values in etcd.  The service is designed to store values with
+// NewService returns a new low level service to store and load values in etcd.  The service is designed to store values with
 // associated metadata in a format that allows it to fulfill with the Certmagic storage interface, effectively implementing simple
 // filesystem semantics on top of etcd key/value storage.  Locks are acquired before writes to etcd and the library will make its
 // best attempt at rolling back transactions that fail.  Concurrent writes are blocking with exponential backoff up to a reasonable
 // time limit.  Errors are logged, but do not guarantee that the system will return to a coherent pre-transaction state in the
 // presence of significant etcd failures or prolonged unavailability.
-func NewEtcdService(c *ClusterConfig) EtcdService {
+func NewService(c *ClusterConfig) Service {
 	return &etcdsrv{
 		mdPrefix: path.Join(c.KeyPrefix + "/md"),
-		lock:     path.Join(c.KeyPrefix, "/lock"),
+		lockKey:  path.Join(c.KeyPrefix, "/lock"),
 		cfg:      c,
 	}
 }
 
-// Lock acquires a lock with a maximum lifetime specified by the ClusterConfig
 func (e *etcdsrv) Lock() error {
+	return e.lock(token)
+}
+
+// Lock acquires a lock with a maximum lifetime specified by the ClusterConfig
+func (e *etcdsrv) lock(t string) error {
 	c, err := getClient(e.cfg)
 	if err != nil {
 		return errors.Wrap(err, "failed to create etcd client while getting lock")
 	}
 	acquire := func() error {
-		if _, err := c.Set(context.Background(), e.lock, token, &client.SetOptions{
-			PrevExist: client.PrevNoExist,
-			TTL:       e.cfg.LockTimeout,
-		}); err != nil {
-			return errors.Wrap(err, "failed to get lock")
+		var okToSet bool
+		resp, err := c.Get(context.Background(), e.lockKey, nil)
+		if err != nil {
+			switch {
+			// no existing lock
+			case client.IsKeyNotFound(err):
+				okToSet = true
+				break
+			default:
+				return errors.Wrap(err, "lock: failed to get existing lock")
+			}
 		}
-		return nil
+		if resp != nil {
+			var l Lock
+			b, err := base64.StdEncoding.DecodeString(resp.Node.Value)
+			if err != nil {
+				return errors.Wrap(err, "lock: failed to decode base64 lock representation")
+			}
+			if err := json.Unmarshal(b, &l); err != nil {
+				return errors.Wrap(err, "lock: failed to unmarshal existing lock")
+			}
+			var lockTime time.Time
+			if err := lockTime.UnmarshalText([]byte(l.Obtained)); err != nil {
+				return errors.Wrap(err, "lock: failed to unmarshal time")
+			}
+			switch {
+			// lock request from same client extend existing lock
+			case l.Token == t:
+				okToSet = true
+				break
+			// orphaned locks that are past lock timeout allow new lock
+			case time.Now().UTC().Sub(lockTime) >= e.cfg.LockTimeout:
+				okToSet = true
+				break
+			default:
+			}
+		}
+		if okToSet {
+			now, err := time.Now().UTC().MarshalText()
+			if err != nil {
+				return errors.Wrap(err, "lock: failed to marshal current UTC time")
+			}
+			l := Lock{
+				Token:    t,
+				Obtained: string(now),
+			}
+			b, err := json.Marshal(l)
+			if err != nil {
+				return errors.Wrap(err, "lock: failed to marshal new lock")
+			}
+			if _, err := c.Set(context.Background(), e.lockKey, base64.StdEncoding.EncodeToString(b), nil); err != nil {
+				return errors.Wrap(err, "failed to get lock")
+			}
+			return nil
+		}
+		return errors.New("lock: failed to obtain lock, already exists")
 	}
-	return backoff.Retry(acquire, backoff.NewExponentialBackOff())
+	switch e.noBackoff {
+	case true:
+		return acquire()
+	default:
+		return backoff.Retry(acquire, backoff.NewExponentialBackOff())
+	}
+
 }
 
 // Unlock
@@ -89,12 +171,17 @@ func (e *etcdsrv) Unlock() error {
 		return errors.Wrap(err, "failed to create etcd client while getting lock")
 	}
 	release := func() error {
-		if _, err := c.Delete(context.Background(), e.lock, nil); err != nil {
+		if _, err := c.Delete(context.Background(), e.lockKey, nil); err != nil {
 			return errors.Wrap(err, "failed to release lock")
 		}
 		return nil
 	}
-	return backoff.Retry(release, backoff.NewExponentialBackOff())
+	switch e.noBackoff {
+	case true:
+		return release()
+	default:
+		return backoff.Retry(release, backoff.NewExponentialBackOff())
+	}
 }
 
 func (e *etcdsrv) get(key string, dst *bytes.Buffer) backoff.Operation {
@@ -128,11 +215,25 @@ func (e *etcdsrv) set(key string, value []byte) backoff.Operation {
 	return func() error {
 		cli, err := getClient(e.cfg)
 		if err != nil {
-			return errors.Wrap(err, "store: could not get client")
+			return errors.Wrap(err, "set: could not get client")
 		}
 		p := path.Join(e.cfg.KeyPrefix, key)
 		if _, err := cli.Set(context.Background(), p, base64.StdEncoding.EncodeToString(value), nil); err != nil {
 			return errors.Wrap(err, "set: failed to set key value")
+		}
+		return nil
+	}
+}
+
+func (e *etcdsrv) del(key string) backoff.Operation {
+	return func() error {
+		cli, err := getClient(e.cfg)
+		if err != nil {
+			return errors.Wrap(err, "del: could not get client")
+		}
+		p := path.Join(e.cfg.KeyPrefix, key)
+		if _, err := cli.Delete(context.Background(), p, nil); err != nil {
+			return errors.Wrapf(err, "del: failed to delete key: %s", key)
 		}
 		return nil
 	}
