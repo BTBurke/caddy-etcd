@@ -1,7 +1,6 @@
 package etcd
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
@@ -171,98 +170,6 @@ func (e *etcdsrv) Unlock() error {
 		return nil
 	}
 	return e.execute(release)
-}
-
-func (e *etcdsrv) get(key string, dst *bytes.Buffer) backoff.Operation {
-	return func() error {
-		cli, err := getClient(e.cfg)
-		if err != nil {
-			return errors.Wrap(err, "get: could not get client")
-		}
-		p := path.Join(e.cfg.KeyPrefix, key)
-		resp, err := cli.Get(context.Background(), p, nil)
-		if err != nil {
-			switch {
-			case client.IsKeyNotFound(err):
-				return nil
-			default:
-				return errors.Wrap(err, "get: error retrieving value")
-			}
-		}
-		b, err := base64.StdEncoding.DecodeString(resp.Node.Value)
-		if err != nil {
-			return errors.Wrap(err, "get: error decoding base64 value")
-		}
-		if _, err := dst.Write(b); err != nil {
-			return errors.Wrap(err, "get: error writing node value to destination")
-		}
-		return nil
-	}
-}
-
-func (e *etcdsrv) set(key string, value []byte) backoff.Operation {
-	return func() error {
-		cli, err := getClient(e.cfg)
-		if err != nil {
-			return errors.Wrap(err, "set: could not get client")
-		}
-		p := path.Join(e.cfg.KeyPrefix, key)
-		if _, err := cli.Set(context.Background(), p, base64.StdEncoding.EncodeToString(value), nil); err != nil {
-			return errors.Wrap(err, "set: failed to set key value")
-		}
-		return nil
-	}
-}
-
-func (e *etcdsrv) del(key string) backoff.Operation {
-	return func() error {
-		cli, err := getClient(e.cfg)
-		if err != nil {
-			return errors.Wrap(err, "del: could not get client")
-		}
-		p := path.Join(e.cfg.KeyPrefix, key)
-		if _, err := cli.Delete(context.Background(), p, nil); err != nil {
-			return errors.Wrapf(err, "del: failed to delete key: %s", key)
-		}
-		return nil
-	}
-}
-
-func (e *etcdsrv) setMD(m *Metadata) backoff.Operation {
-	return func() error {
-		cli, err := getClient(e.cfg)
-		if err != nil {
-			return errors.Wrap(err, "setmd: could not get client")
-		}
-		jsdata, err := json.Marshal(m)
-		key := path.Join(e.mdPrefix, m.Key)
-		if _, err := cli.Set(context.Background(), key, base64.StdEncoding.EncodeToString(jsdata), nil); err != nil {
-			return errors.Wrap(err, "setmd: failed to set metadata value")
-		}
-		return nil
-	}
-}
-
-func (e *etcdsrv) getMD(key string, m *Metadata) backoff.Operation {
-	return func() error {
-		cli, err := getClient(e.cfg)
-		if err != nil {
-			return errors.Wrap(err, "getmd: could not get client")
-		}
-		p := path.Join(e.mdPrefix, key)
-		resp, err := cli.Get(context.Background(), p, nil)
-		if err != nil {
-			return errors.Wrap(err, "getmd: failed to get metadata response")
-		}
-		bjson, err := base64.StdEncoding.DecodeString(resp.Node.Value)
-		if err != nil {
-			return errors.Wrap(err, "getmd: failed to decode metadata")
-		}
-		if err := json.Unmarshal(bjson, m); err != nil {
-			return errors.Wrap(err, "getmd: failed to unmarshal metadata response")
-		}
-		return nil
-	}
 }
 
 // execute will use exponential backoff when configured
