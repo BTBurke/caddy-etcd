@@ -6,12 +6,13 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/pkg/errors"
 	"log"
-	"go.etcd.io/etcd/client"
 	"path"
 	"time"
+
 	"github.com/cenkalti/backoff"
+	"github.com/pkg/errors"
+	"go.etcd.io/etcd/client"
 )
 
 // token is a random value used to manage locks
@@ -28,8 +29,8 @@ func init() {
 
 // Metadata stores information about a particular node that represents a file in etcd
 type Metadata struct {
-	Key string
-	Size int32
+	Key       string
+	Size      int32
 	Timestamp time.Time
 }
 
@@ -44,9 +45,9 @@ type EtcdService interface {
 
 type etcdsrv struct {
 	mdPrefix string
-	lock string
-	cfg *ClusterConfig
-	client *client.KeysAPI
+	lock     string
+	cfg      *ClusterConfig
+	client   *client.KeysAPI
 }
 
 // NewEtcdService returns a new low level service to store and load values in etcd.  The service is designed to store values with
@@ -58,8 +59,8 @@ type etcdsrv struct {
 func NewEtcdService(c *ClusterConfig) EtcdService {
 	return &etcdsrv{
 		mdPrefix: path.Join(c.KeyPrefix + "/md"),
-		lock: path.Join(c.KeyPrefix, "/lock"),
-		cfg: c,
+		lock:     path.Join(c.KeyPrefix, "/lock"),
+		cfg:      c,
 	}
 }
 
@@ -112,7 +113,6 @@ func (e *etcdsrv) get(key string, dst *bytes.Buffer) backoff.Operation {
 				return errors.Wrap(err, "get: error retrieving value")
 			}
 		}
-		log.Printf("got: %v\n", resp.Node)
 		b, err := base64.StdEncoding.DecodeString(resp.Node.Value)
 		if err != nil {
 			return errors.Wrap(err, "get: error decoding base64 value")
@@ -191,12 +191,12 @@ func tx(txs ...backoff.Operation) []backoff.Operation {
 	return txs
 }
 
-func pipeline(commits []backoff.Operation, rollbacks []backoff.Operation, b backoff.BackOff)  error {
+func pipeline(commits []backoff.Operation, rollbacks []backoff.Operation, b backoff.BackOff) error {
 	var err error
 	for idx, commit := range commits {
 		err = backoff.Retry(commit, b)
 		if err != nil {
-			for i := idx-1; i >= 0; i-- {
+			for i := idx - 1; i >= 0; i-- {
 				switch {
 				case i >= len(rollbacks):
 					continue

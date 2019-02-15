@@ -4,15 +4,24 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/cenkalti/backoff"
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"go.etcd.io/etcd/client"
 	"io/ioutil"
 	"net/http"
 	"path"
 	"testing"
+
+	"github.com/cenkalti/backoff"
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"go.etcd.io/etcd/client"
 )
+
+func shouldRunIntegration() bool {
+	resp, err := http.Get("http://127.0.0.1:2379/version")
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return false
+	}
+	return true
+}
 
 func TestPipeline(t *testing.T) {
 	var arr []int
@@ -29,7 +38,7 @@ func TestPipeline(t *testing.T) {
 		return func() error {
 			arr = arr[0 : len(arr)-1]
 			return nil
-			}
+		}
 	}
 	noop := func() backoff.Operation {
 		return func() error {
@@ -37,11 +46,11 @@ func TestPipeline(t *testing.T) {
 		}
 	}
 
-	var tcs = []struct{
-		Commit []backoff.Operation
-		Rollback []backoff.Operation
+	var tcs = []struct {
+		Commit    []backoff.Operation
+		Rollback  []backoff.Operation
 		ShouldErr bool
-		Expect []int
+		Expect    []int
 	}{
 		{Commit: tx(push(1, false), push(2, false)), Rollback: nil, ShouldErr: false, Expect: []int{1, 2}},
 		{Commit: tx(push(1, false), push(2, true)), Rollback: tx(pop(), pop()), ShouldErr: true, Expect: []int{}},
@@ -52,7 +61,7 @@ func TestPipeline(t *testing.T) {
 	for _, tc := range tcs {
 		arr = []int{}
 		err := pipeline(tc.Commit, tc.Rollback, backoff.WithMaxRetries(backoff.NewExponentialBackOff(), 1))
-		switch tc.ShouldErr{
+		switch tc.ShouldErr {
 		case true:
 			assert.Error(t, err)
 		default:
@@ -62,18 +71,21 @@ func TestPipeline(t *testing.T) {
 	}
 }
 
-func TestSet(t *testing.T) {
+func TestLowLevelSet(t *testing.T) {
+	if !shouldRunIntegration() {
+		t.Skip("no etcd server found, skipping")
+	}
 	cfg := &ClusterConfig{
 		KeyPrefix: "/caddy",
-		ServerIP: []string{"http://127.0.0.1:2379"},
+		ServerIP:  []string{"http://127.0.0.1:2379"},
 	}
 	cli := &etcdsrv{
 		mdPrefix: path.Join(cfg.KeyPrefix + "/md"),
-		lock: path.Join(cfg.KeyPrefix, "/lock"),
-		cfg: cfg,
+		lock:     path.Join(cfg.KeyPrefix, "/lock"),
+		cfg:      cfg,
 	}
-	tcs := []struct{
-		Path string
+	tcs := []struct {
+		Path  string
 		Value []byte
 	}{
 		{Path: "test", Value: []byte("test")},
@@ -83,7 +95,7 @@ func TestSet(t *testing.T) {
 	for _, tc := range tcs {
 		err := cli.set(tc.Path, tc.Value)()
 		assert.NoError(t, err)
-		resp, err := http.Get("http://127.0.0.1:2379/v2/keys/caddy/"+tc.Path)
+		resp, err := http.Get("http://127.0.0.1:2379/v2/keys/caddy/" + tc.Path)
 		defer resp.Body.Close()
 		if err != nil {
 			t.Fail()
@@ -102,7 +114,10 @@ func TestSet(t *testing.T) {
 	}
 }
 
-func TestGet(t *testing.T) {
+func TestLowLevelGet(t *testing.T) {
+	if !shouldRunIntegration() {
+		t.Skip("no etcd server found, skipping")
+	}
 	cfg := &ClusterConfig{
 		KeyPrefix: "/caddy",
 		ServerIP:  []string{"http://127.0.0.1:2379"},
@@ -133,4 +148,4 @@ func TestGet(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, tc.Value, resp)
 	}
-	}
+}
