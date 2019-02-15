@@ -1,6 +1,7 @@
 package etcd
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha1"
@@ -183,13 +184,82 @@ func (e *etcdsrv) execute(o backoff.Operation) error {
 }
 
 func (e *etcdsrv) Store(key string, value []byte) error {
-	return nil
+	cli, err := getClient(e.cfg)
+	if err != nil {
+		return errors.Wrap(err, "store: failed to get client")
+	}
+	storageKey := path.Join(e.cfg.KeyPrefix, key)
+	storageKeyMD := path.Join(e.mdPrefix, key)
+	md := NewMetadata(key, value)
+
+	ex := new(bool)
+	if err := e.execute(exists(cli, storageKeyMD, ex)); err != nil {
+		return errors.Wrap(err, "store: failed to get old metadata")
+	}
+	var commits []backoff.Operation
+	var rollbacks []backoff.Operation
+	switch *ex {
+	case true:
+		mdPrev := new(Metadata)
+		valPrev := new(bytes.Buffer)
+		commits = tx(get(cli, storageKey, valPrev), getMD(cli, storageKeyMD, mdPrev), set(cli, storageKey, value), setMD(cli, storageKeyMD, md))
+		rollbacks = tx(noop(), noop(), set(cli, storageKey, valPrev.Bytes()), setMD(cli, storageKeyMD, *mdPrev))
+	default:
+		commits = tx(set(cli, storageKey, value), setMD(cli, storageKey, md))
+		rollbacks = tx(del(cli, storageKey), del(cli, storageKeyMD))
+	}
+	return pipeline(commits, rollbacks, backoff.NewExponentialBackOff())
 }
 
 func (e *etcdsrv) Load(key string) ([]byte, error) {
-	return nil, nil
+	cli, err := getClient(e.cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "load: failed to get client")
+	}
+	storageKey := path.Join(e.cfg.KeyPrefix, key)
+	storageKeyMD := path.Join(e.mdPrefix, key)
+	ex := new(bool)
+	if err := e.execute(exists(cli, storageKeyMD, ex)); err != nil {
+		return nil, errors.Wrap(err, "load: could not get existence of key")
+	}
+	switch *ex {
+	case false:
+		return nil, NotExist{key}
+	default:
+	}
+	md := new(Metadata)
+	if err := e.execute(getMD(cli, storageKeyMD, md)); err != nil {
+		return nil, errors.Wrap(err, "load: could not get metadata")
+	}
+	dst := new(bytes.Buffer)
+	if err := e.execute(get(cli, storageKey, dst)); err != nil {
+		return nil, errors.Wrap(err, "load: could not get data")
+	}
+	value := dst.Bytes()
+	if sha1.Sum(value) != md.Hash {
+		return nil, FailedChecksum{key}
+	}
+	return value, nil
 }
 
 func (e *etcdsrv) Metadata(key string) (*Metadata, error) {
-	return nil, nil
+	cli, err := getClient(e.cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "load: failed to get client")
+	}
+	storageKeyMD := path.Join(e.mdPrefix, key)
+	ex := new(bool)
+	if err := e.execute(exists(cli, storageKeyMD, ex)); err != nil {
+		return nil, errors.Wrap(err, "load: could not get existence of key")
+	}
+	switch *ex {
+	case false:
+		return nil, NotExist{key}
+	default:
+	}
+	md := new(Metadata)
+	if err := e.execute(getMD(cli, storageKeyMD, md)); err != nil {
+		return nil, errors.Wrap(err, "load: could not get metadata")
+	}
+	return md, nil
 }

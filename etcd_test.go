@@ -81,3 +81,7 @@ func TestLockUnlock(t *testing.T) {
 		})
 	}
 }
+
+func TestStore(t *testing.T) {
+
+}

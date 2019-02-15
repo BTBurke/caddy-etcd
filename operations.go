@@ -115,3 +115,26 @@ func getMD(cli client.KeysAPI, key string, m *Metadata) backoff.Operation {
 		return nil
 	}
 }
+
+func noop() backoff.Operation {
+	return func() error {
+		return nil
+	}
+}
+
+func exists(cli client.KeysAPI, key string, out *bool) backoff.Operation {
+	return func() error {
+		resp, err := cli.Get(context.Background(), key, nil)
+		if err != nil {
+			return errors.Wrap(err, "exists: failed to check key")
+		}
+		switch {
+		case resp.Node == nil:
+			*out = false
+			break
+		default:
+			*out = true
+		}
+		return nil
+	}
+}
