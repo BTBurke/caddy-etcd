@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"path"
 	"testing"
@@ -170,7 +169,6 @@ func TestLockUnlock(t *testing.T) {
 	type lockFunc func(d time.Duration) error
 	lock := func(t string) lockFunc {
 		return func(d time.Duration) error {
-			log.Printf("getting lock with timeout %s\n", d)
 			cli.cfg.LockTimeout = d
 			return cli.lock(t)
 		}
@@ -181,9 +179,7 @@ func TestLockUnlock(t *testing.T) {
 	}
 	wait := func(d time.Duration) lockFunc {
 		return func(d2 time.Duration) error {
-			log.Printf("waiting %s, start: %s\n", d, time.Now())
 			time.Sleep(d)
-			log.Printf("end sleep: %s", time.Now())
 			return nil
 		}
 	}
@@ -201,9 +197,7 @@ func TestLockUnlock(t *testing.T) {
 	}
 	for _, tc := range tcs {
 		t.Run(tc.Name, func(t *testing.T) {
-			if err := cli.del("/lock"); err != nil {
-				t.Log(err)
-			}
+			_ = cli.del("/lock")
 			var err error
 			for _, f := range tc.Funcs {
 				err = f(tc.Timeout)
