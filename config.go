@@ -107,7 +107,7 @@ func WithTimeout(s string) ConfigOption {
 	return func(c *ClusterConfig) error {
 		d, err := time.ParseDuration(s)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "CADDY_CLUSTERING_ETCD_TIMEOUT is an invalid format: must be a go standard time duration")
 		}
 		c.LockTimeout = d
 		return nil
