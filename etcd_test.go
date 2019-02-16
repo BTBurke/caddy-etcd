@@ -3,6 +3,7 @@ package etcd
 import (
 	"net/http"
 	"path"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,5 +158,63 @@ func TestStoreLoad(t *testing.T) {
 	data2R, err := cli.Load(p)
 	assert.Equal(t, data2, data2R)
 	assert.NoError(t, err)
+
+}
+
+func TestList(t *testing.T) {
+	if !shouldRunIntegration() {
+		t.Skip("no etcd server found, skipping")
+	}
+	cfg := &ClusterConfig{
+		KeyPrefix: "/caddy",
+		ServerIP:  []string{"http://127.0.0.1:2379"},
+	}
+	paths := []string{
+		"/one/two/three.end",
+		"/one/two/four.end",
+		"/one/two/three/four.end",
+		"/one/five/six/seven.end",
+		"/one/five/eleven.end",
+		"/one/five/six/ten.end",
+	}
+	cliL, err := getClient(cfg)
+	assert.NoError(t, err)
+	for _, p := range paths {
+		if err := set(cliL, path.Join(cfg.KeyPrefix, p), []byte("test"))(); err != nil {
+			assert.NoError(t, err)
+		}
+	}
+	cli := &etcdsrv{
+		mdPrefix:  path.Join(cfg.KeyPrefix + "/md"),
+		lockKey:   path.Join(cfg.KeyPrefix, "/lock"),
+		cfg:       cfg,
+		noBackoff: true,
+	}
+	out1, err := cli.List("/one")
+	assert.NoError(t, err)
+	for _, p := range paths {
+		assert.Contains(t, out1, p)
+	}
+	out2, err := cli.List("/one", FilterPrefix("/one/two", cfg.KeyPrefix))
+	assert.NoError(t, err)
+	for _, p := range paths {
+		if strings.HasPrefix(p, "/one/two") {
+			assert.Contains(t, out2, p)
+		} else {
+			assert.NotContains(t, out2, p)
+		}
+	}
+	out3, err := cli.List("/one", FilterRemoveDirectories())
+	assert.NoError(t, err)
+	for _, p := range paths {
+		dir, _ := path.Split(p)
+		assert.NotContains(t, out3, dir)
+		assert.Contains(t, out3, p)
+	}
+	out4, err := cli.List("/one", FilterExactPrefix("/one/two", cfg.KeyPrefix))
+	assert.NoError(t, err)
+	assert.Contains(t, out4, "/one/two/three.end")
+	assert.Contains(t, out4, "/one/two/four.end")
+	assert.NotContains(t, out4, "/one/two/three/four.end")
 
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -63,6 +64,7 @@ type Service interface {
 	Metadata(key string) (*Metadata, error)
 	Lock(key string) error
 	Unlock(key string) error
+	List(path string, filters ...func(client.Node) bool) ([]string, error)
 }
 
 type etcdsrv struct {
@@ -271,4 +273,70 @@ func (e *etcdsrv) Metadata(key string) (*Metadata, error) {
 		return nil, errors.Wrap(err, "load: could not get metadata")
 	}
 	return md, nil
+}
+
+func (e *etcdsrv) List(key string, filters ...func(client.Node) bool) ([]string, error) {
+	cli, err := getClient(e.cfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "list: failed to get client")
+	}
+	k := path.Join(e.cfg.KeyPrefix, key)
+	nodes, err := list(cli, k)
+	if err != nil {
+		return nil, errors.Wrap(err, "List: could not get keys")
+	}
+	var out []string
+	for _, f := range filters {
+		nodes = filter(nodes, f)
+	}
+	for _, n := range nodes {
+		out = append(out, strings.TrimPrefix(n.Key, e.cfg.KeyPrefix))
+	}
+	return out, nil
+}
+
+// FilterPrefix is a filter to be used with List to return only paths that start with prefix. If specified,
+// cut will first trim a leading path off the string before comparison.
+func FilterPrefix(prefix string, cut string) func(client.Node) bool {
+	return func(n client.Node) bool {
+		return strings.HasPrefix(strings.TrimPrefix(n.Key, cut), prefix)
+	}
+}
+
+// FilterRemoveDirectories is a filter to be used with List to remove all directories (i.e., nodes that contain only other nodes and no value)
+func FilterRemoveDirectories() func(client.Node) bool {
+	return func(n client.Node) bool {
+		return !n.Dir
+	}
+}
+
+// FilterExactPrefix returns only terminal nodes (files) with the exact path prefix.  For example, for two files
+// `/one/two/file.txt` and `/one/two/three/file.txt` only the first would be returned for a prefix of `/one/two`.
+func FilterExactPrefix(prefix string, cut string) func(client.Node) bool {
+	return func(n client.Node) bool {
+		s := strings.TrimPrefix(n.Key, cut)
+		if n.Dir {
+			return false
+		}
+		dir, _ := path.Split(s)
+		if dir == prefix || dir == prefix+"/" {
+			return true
+		}
+		return false
+	}
+}
+
+// filter is a helper function to apply filters to the nodes returned from List
+func filter(nodes []client.Node, f func(client.Node) bool) []client.Node {
+	var out []client.Node
+	for _, n := range nodes {
+		switch f(n) {
+		case true:
+			out = append(out, n)
+			continue
+		default:
+			continue
+		}
+	}
+	return out
 }

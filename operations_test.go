@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/cenkalti/backoff"
@@ -172,4 +173,37 @@ func TestLowLevelMD(t *testing.T) {
 	assert.Equal(t, expSum, md2.Hash)
 	assert.Equal(t, len(data), md2.Size)
 	assert.Equal(t, p, md2.Path)
+}
+
+func TestListLowLevel(t *testing.T) {
+	if !shouldRunIntegration() {
+		t.Skip("no etcd server found, skipping")
+	}
+	cfg := &ClusterConfig{
+		KeyPrefix: "/caddy",
+		ServerIP:  []string{"http://127.0.0.1:2379"},
+	}
+	paths := []string{
+		"/one/two/three.end",
+		"/one/two/four.end",
+		"/one/five/six/seven.end",
+		"/one/five/eleven.end",
+		"/one/five/six/ten.end",
+	}
+	cli, err := getClient(cfg)
+	assert.NoError(t, err)
+	for _, p := range paths {
+		if err := set(cli, path.Join(cfg.KeyPrefix, p), []byte("test"))(); err != nil {
+			assert.NoError(t, err)
+		}
+	}
+	out, err := list(cli, path.Join(cfg.KeyPrefix, "one"))
+	assert.NoError(t, err)
+	var s []string
+	for _, n := range out {
+		s = append(s, strings.TrimPrefix(n.Key, cfg.KeyPrefix))
+	}
+	for _, p := range paths {
+		assert.Contains(t, s, p)
+	}
 }

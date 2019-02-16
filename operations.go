@@ -138,3 +138,50 @@ func exists(cli client.KeysAPI, key string, out *bool) backoff.Operation {
 		return nil
 	}
 }
+
+func list(cli client.KeysAPI, key string) ([]client.Node, error) {
+
+	var out []client.Node
+	resp := new(client.Response)
+	getRecursive := func() error {
+		var err error
+		resp, err = cli.Get(context.Background(), key, &client.GetOptions{
+			Recursive: true,
+		})
+		if err != nil {
+			switch {
+			case client.IsKeyNotFound(err):
+				return nil
+			default:
+				return errors.Wrap(err, "list: unable to get list")
+			}
+		}
+		return nil
+	}
+	if err := backoff.Retry(getRecursive, backoff.NewExponentialBackOff()); err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return out, nil
+	}
+	walkNodes(resp.Node, &out)
+	return out, nil
+
+}
+
+func walkNodes(node *client.Node, out *[]client.Node) {
+	//log.Printf("add: %+v\n", node.Key)
+	//log.Printf("out: %+v\n", out)
+	*out = append(*out, *node)
+	for _, n := range node.Nodes {
+		switch {
+		case n.Nodes == nil:
+			*out = append(*out, *n)
+			//log.Printf("add: %+v\n", n.Key)
+			//log.Printf("out: %+v\n", out)
+			continue
+		default:
+			walkNodes(n, out)
+		}
+	}
+}
