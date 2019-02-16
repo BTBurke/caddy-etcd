@@ -216,5 +216,12 @@ func TestList(t *testing.T) {
 	assert.Contains(t, out4, "/one/two/three.end")
 	assert.Contains(t, out4, "/one/two/four.end")
 	assert.NotContains(t, out4, "/one/two/three/four.end")
-
+	out5, err := cli.List("/one/two")
+	assert.Contains(t, out5, "/one/two/three.end")
+	assert.Contains(t, out5, "/one/two/four.end")
+	assert.Contains(t, out5, "/one/two/three/four.end")
+	assert.NotContains(t, out5, "/one/five/eleven.md")
+	out6, err := cli.List("/one/two", FilterPrefix("/one/five", cfg.KeyPrefix))
+	assert.NoError(t, err)
+	assert.Empty(t, out6)
 }
