@@ -61,10 +61,12 @@ func NewMetadata(key string, data []byte) Metadata {
 type Service interface {
 	Store(key string, value []byte) error
 	Load(key string) ([]byte, error)
+	Delete(key string) error
 	Metadata(key string) (*Metadata, error)
 	Lock(key string) error
 	Unlock(key string) error
 	List(path string, filters ...func(client.Node) bool) ([]string, error)
+	prefix() string
 }
 
 type etcdsrv struct {
@@ -251,6 +253,18 @@ func (e *etcdsrv) Load(key string) ([]byte, error) {
 	return value, nil
 }
 
+// Delete will remove nodes associated with the file at key
+func (e *etcdsrv) Delete(key string) error {
+	cli, err := getClient(e.cfg)
+	if err != nil {
+		return errors.Wrap(err, "load: failed to get client")
+	}
+	storageKey := path.Join(e.cfg.KeyPrefix, key)
+	storageKeyMD := path.Join(e.mdPrefix, key)
+	commits := tx(del(cli, storageKey), del(cli, storageKeyMD))
+	return pipeline(commits, nil, backoff.NewExponentialBackOff())
+}
+
 // Metadata will load the metadata associated with the data at node key.  If the
 // node does not exist, a `NotExist` error is returned and the metadata will be nil.
 func (e *etcdsrv) Metadata(key string) (*Metadata, error) {
@@ -339,4 +353,8 @@ func filter(nodes []client.Node, f func(client.Node) bool) []client.Node {
 		}
 	}
 	return out
+}
+
+func (e *etcdsrv) prefix() string {
+	return e.cfg.KeyPrefix
 }
