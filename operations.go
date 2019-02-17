@@ -101,19 +101,56 @@ func setMD(cli client.KeysAPI, key string, m Metadata) backoff.Operation {
 
 func getMD(cli client.KeysAPI, key string, m *Metadata) backoff.Operation {
 	return func() error {
-		resp, err := cli.Get(context.Background(), key, nil)
+		resp, err := cli.Get(context.Background(), key, &client.GetOptions{
+			Recursive: true,
+		})
 		if err != nil {
 			return errors.Wrap(err, "getmd: failed to get metadata response")
 		}
-		bjson, err := base64.StdEncoding.DecodeString(resp.Node.Value)
-		if err != nil {
-			return errors.Wrap(err, "getmd: failed to decode metadata")
+		switch {
+		case resp.Node.Dir:
+			m.Path = key
+			m.IsDir = true
+			nodes := new([]client.Node)
+			walkNodes(resp.Node, nodes)
+			for _, node := range *nodes {
+				switch {
+				case node.Dir:
+					continue
+				default:
+					md1 := new(Metadata)
+					if err := unmarshalMD(&node, md1); err != nil {
+						return errors.Wrap(err, "getmd: failed to unmarshal metadata response")
+					}
+					m.Size = m.Size + md1.Size
+					if md1.Timestamp.After(m.Timestamp) {
+						m.Timestamp = md1.Timestamp
+					}
+					continue
+				}
+			}
+			return nil
+		default:
+			if err := unmarshalMD(resp.Node, m); err != nil {
+				return errors.Wrap(err, "getmd: failed to unmarshal metadata response")
+			}
+			return nil
 		}
-		if err := json.Unmarshal(bjson, m); err != nil {
-			return errors.Wrap(err, "getmd: failed to unmarshal metadata response")
-		}
-		return nil
 	}
+}
+
+func unmarshalMD(node *client.Node, m *Metadata) error {
+	if node == nil || m == nil {
+		return errors.New("unmarshalMD: response or metadata is nil")
+	}
+	bjson, err := base64.StdEncoding.DecodeString(node.Value)
+	if err != nil {
+		return errors.Wrap(err, "getmd: failed to decode metadata")
+	}
+	if err := json.Unmarshal(bjson, m); err != nil {
+		return errors.Wrap(err, "getmd: failed to unmarshal metadata response")
+	}
+	return nil
 }
 
 func noop() backoff.Operation {
@@ -170,18 +207,15 @@ func list(cli client.KeysAPI, key string) ([]client.Node, error) {
 }
 
 func walkNodes(node *client.Node, out *[]client.Node) {
-	//log.Printf("add: %+v\n", node.Key)
-	//log.Printf("out: %+v\n", out)
 	*out = append(*out, *node)
 	for _, n := range node.Nodes {
 		switch {
 		case n.Nodes == nil:
 			*out = append(*out, *n)
-			//log.Printf("add: %+v\n", n.Key)
-			//log.Printf("out: %+v\n", out)
 			continue
 		default:
 			walkNodes(n, out)
+			continue
 		}
 	}
 }

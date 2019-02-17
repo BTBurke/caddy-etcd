@@ -100,21 +100,56 @@ func TestMetadata(t *testing.T) {
 		cfg:       cfg,
 		noBackoff: true,
 	}
-	p := "/some/path/key.md"
-	data1 := []byte("test data")
-	md1 := NewMetadata(p, data1)
-	cliL, err := getClient(cfg)
-	assert.NoError(t, err)
-	if err := cli.execute(setMD(cliL, path.Join(cli.mdPrefix, p), md1)); err != nil {
-		assert.NoError(t, err)
+	data := []byte("test data")
+	//dataSize := len(data)
+	paths := map[string]Metadata{
+		"/testmd/some/path/key1.md":        NewMetadata("/testmd/some/path/key1.md", data),
+		"/testmd/some/path/key2.md":        NewMetadata("/testmd/some/path/key2.md", data),
+		"/testmd/some/path/deeper/key3.md": NewMetadata("/testmd/some/path/deeper/key3.md", data),
 	}
-	md, err := cli.Metadata(p)
-	assert.NoError(t, err)
-	assert.Equal(t, md1, *md)
-	md2, err2 := cli.Metadata("/does/not/exist")
-	assert.Error(t, err2)
-	assert.Nil(t, md2)
-	assert.True(t, IsNotExistError(err2))
+	lastTime := func(p map[string]Metadata) time.Time {
+		var t1 time.Time
+		for _, md := range p {
+			if md.Timestamp.After(t1) {
+				t1 = md.Timestamp
+			}
+		}
+		return t1
+	}
+	tcs := []struct {
+		Name        string
+		Path        string
+		Expect      Metadata
+		ShouldExist bool
+	}{
+		{Name: "basic get", Path: "/testmd/some/path/key1.md", Expect: paths["/testmd/some/path/key1.md"], ShouldExist: true},
+		{Name: "basic get nested", Path: "/testmd/some/path/deeper/key3.md", Expect: paths["/testmd/some/path/deeper/key3.md"], ShouldExist: true},
+		{Name: "not exist", Path: "/does/not/exist", Expect: Metadata{}, ShouldExist: false},
+		{Name: "nested directory", Path: "/testmd/some/path", Expect: Metadata{Path: "/testmd/some/path", Size: 3 * len(data), IsDir: true, Timestamp: lastTime(paths)}, ShouldExist: true},
+	}
+	cliL, err := getClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, v := range paths {
+		if err := cli.execute(setMD(cliL, path.Join(cli.mdPrefix, k), v)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range tcs {
+		t.Run(tc.Name, func(t *testing.T) {
+			md, err := cli.Metadata(tc.Path)
+			switch {
+			case tc.ShouldExist:
+				assert.Equal(t, tc.Expect, *md)
+				assert.NoError(t, err)
+			default:
+				assert.Error(t, err)
+				assert.True(t, IsNotExistError(err))
+			}
+
+		})
+	}
 }
 
 func TestStoreLoad(t *testing.T) {
@@ -131,7 +166,7 @@ func TestStoreLoad(t *testing.T) {
 		cfg:       cfg,
 		noBackoff: true,
 	}
-	p := "/some/path/key.md"
+	p := "/path/key.md"
 	data1 := []byte("test data")
 	data2 := []byte("test data 2")
 	md1 := NewMetadata(p, data1)

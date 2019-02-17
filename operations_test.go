@@ -2,6 +2,7 @@ package etcd
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/json"
@@ -152,7 +153,7 @@ func TestLowLevelMD(t *testing.T) {
 	}
 	data := []byte("test data")
 	expSum := sha1.Sum(data)
-	p := "/some/path/key.md"
+	p := "/testmd/some/path/key.md"
 	key := path.Join(cfg.KeyPrefix, p)
 	md := NewMetadata(p, data)
 	assert.Equal(t, p, md.Path)
@@ -206,4 +207,45 @@ func TestListLowLevel(t *testing.T) {
 	for _, p := range paths {
 		assert.Contains(t, s, p)
 	}
+}
+
+func TestWalkNodes(t *testing.T) {
+	if !shouldRunIntegration() {
+		t.Skip("no etcd server found, skipping")
+	}
+	cfg := &ClusterConfig{
+		KeyPrefix: "/caddy",
+		ServerIP:  []string{"http://127.0.0.1:2379"},
+	}
+	paths := []string{
+		"/testwalk/one/one.end",
+		"/testwalk/one/two/three.end",
+		"/testwalk/one/two/four.end",
+		"/testwalk/two/five/six/seven.end",
+		"/testwalk/two/five/eleven.end",
+		"/testwalk/two/five/six/ten.end",
+	}
+	cli, err := getClient(cfg)
+	assert.NoError(t, err)
+	for _, p := range paths {
+		if err := set(cli, p, []byte("test"))(); err != nil {
+			assert.NoError(t, err)
+		}
+	}
+	nodes := new([]client.Node)
+	resp, err := cli.Get(context.Background(), "/testwalk", &client.GetOptions{
+		Recursive: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	walkNodes(resp.Node, nodes)
+	var nodeNames []string
+	for _, node := range *nodes {
+		nodeNames = append(nodeNames, node.Key)
+	}
+	for _, p := range paths {
+		assert.Contains(t, nodeNames, p)
+	}
+
 }

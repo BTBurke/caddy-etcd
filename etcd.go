@@ -44,6 +44,7 @@ type Metadata struct {
 	Size      int
 	Timestamp time.Time
 	Hash      [20]byte
+	IsDir     bool
 }
 
 // NewMetadata returns a metadata information given a path and a file to be stored at the path.
@@ -213,7 +214,7 @@ func (e *etcdsrv) Store(key string, value []byte) error {
 		commits = tx(get(cli, storageKey, valPrev), getMD(cli, storageKeyMD, mdPrev), set(cli, storageKey, value), setMD(cli, storageKeyMD, md))
 		rollbacks = tx(noop(), noop(), set(cli, storageKey, valPrev.Bytes()), setMD(cli, storageKeyMD, *mdPrev))
 	default:
-		commits = tx(set(cli, storageKey, value), setMD(cli, storageKey, md))
+		commits = tx(set(cli, storageKey, value), setMD(cli, storageKeyMD, md))
 		rollbacks = tx(del(cli, storageKey), del(cli, storageKeyMD))
 	}
 	return pipeline(commits, rollbacks, backoff.NewExponentialBackOff())
@@ -285,6 +286,10 @@ func (e *etcdsrv) Metadata(key string) (*Metadata, error) {
 	md := new(Metadata)
 	if err := e.execute(getMD(cli, storageKeyMD, md)); err != nil {
 		return nil, errors.Wrap(err, "load: could not get metadata")
+	}
+	// directory virtual nodes need to remove the MD prefix
+	if md.IsDir {
+		md.Path = strings.TrimPrefix(md.Path, e.mdPrefix)
 	}
 	return md, nil
 }
