@@ -1,39 +1,49 @@
 package etcd
 
-import "github.com/mholt/certmagic"
+import (
+	"github.com/mholt/caddy/caddytls"
+	certmagic "github.com/mholt/certmagic"
+)
+
+var _ certmagic.Storage = Cluster{}
+
+func init() {
+	//start := caddytls.ClusterPluginConstructor(NewCluster)
+	caddytls.RegisterClusterPlugin("etcd", NewCluster)
+}
 
 type Cluster struct {
 	srv Service
 }
 
-func NewCluster() (*Cluster, error) {
+func NewCluster() (certmagic.Storage, error) {
 	opts := ConfigOptsFromEnvironment()
 	c, err := NewClusterConfig(opts...)
 	if err != nil {
-		return nil, err
+		return Cluster{}, err
 	}
-	return &Cluster{
+	return Cluster{
 		srv: NewService(c),
 	}, nil
 }
 
-func (c *Cluster) Lock(key string) error {
+func (c Cluster) Lock(key string) error {
 	return c.srv.Lock(key)
 }
 
-func (c *Cluster) Unlock(key string) error {
+func (c Cluster) Unlock(key string) error {
 	return c.srv.Unlock(key)
 }
 
-func (c *Cluster) Store(key string, value []byte) error {
+func (c Cluster) Store(key string, value []byte) error {
 	return c.srv.Store(key, value)
 }
 
-func (c *Cluster) Load(key string) ([]byte, error) {
+func (c Cluster) Load(key string) ([]byte, error) {
 	return c.srv.Load(key)
 }
 
-func (c *Cluster) Exists(key string) bool {
+func (c Cluster) Exists(key string) bool {
 	_, err := c.srv.Metadata(key)
 	switch {
 	case err == nil:
@@ -45,11 +55,11 @@ func (c *Cluster) Exists(key string) bool {
 	}
 }
 
-func (c *Cluster) Delete(key string) error {
+func (c Cluster) Delete(key string) error {
 	return c.srv.Delete(key)
 }
 
-func (c *Cluster) List(prefix string, recursive bool) ([]string, error) {
+func (c Cluster) List(prefix string, recursive bool) ([]string, error) {
 	switch {
 	case recursive:
 		return c.srv.List(prefix, FilterRemoveDirectories())
@@ -58,6 +68,15 @@ func (c *Cluster) List(prefix string, recursive bool) ([]string, error) {
 	}
 }
 
-func (c *Cluster) Stat(key string) (certmagic.KeyInfo, error) {
-	return certmagic.KeyInfo{}, nil
+func (c Cluster) Stat(key string) (certmagic.KeyInfo, error) {
+	md, err := c.srv.Metadata(key)
+	if err != nil {
+		return certmagic.KeyInfo{}, err
+	}
+	return certmagic.KeyInfo{
+		Key:        md.Path,
+		Modified:   md.Timestamp,
+		Size:       int64(md.Size),
+		IsTerminal: !md.IsDir,
+	}, nil
 }
