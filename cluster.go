@@ -2,13 +2,12 @@ package etcd
 
 import (
 	"github.com/mholt/caddy/caddytls"
-	certmagic "github.com/mholt/certmagic"
+	"github.com/mholt/certmagic"
 )
 
 var _ certmagic.Storage = Cluster{}
 
 func init() {
-	//start := caddytls.ClusterPluginConstructor(NewCluster)
 	caddytls.RegisterClusterPlugin("etcd", NewCluster)
 }
 
