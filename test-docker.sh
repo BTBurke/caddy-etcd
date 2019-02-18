@@ -1,6 +1,13 @@
 #!/bin/bash
 
-docker run \
+
+DOCKER_RUN="docker run"
+if [ "$1" = "detach" ] 
+then
+  DOCKER_RUN="docker run -d"
+fi
+
+$DOCKER_RUN \
   --rm \
   -p 2379:2379 \
   -p 4001:4001 \
