@@ -8,4 +8,5 @@ before_install:
 
 script:
   - go get -u -t
+  - go vet
   - go test -v -cover -race
