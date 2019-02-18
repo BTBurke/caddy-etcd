@@ -3,6 +3,7 @@ package etcd
 import (
 	"github.com/mholt/caddy/caddytls"
 	"github.com/mholt/certmagic"
+	"log"
 )
 
 // ensure that cluster implements certmagic.Storage
@@ -20,6 +21,7 @@ type Cluster struct {
 
 // NewCluster returns a cluster plugin that reads from the environment to configure itself
 func NewCluster() (certmagic.Storage, error) {
+	log.Printf("Activating etcd clustering")
 	opts := ConfigOptsFromEnvironment()
 	c, err := NewClusterConfig(opts...)
 	if err != nil {
