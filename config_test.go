@@ -63,21 +63,33 @@ func TestServers(t *testing.T) {
 
 func TestCaddyfile(t *testing.T) {
 	caddyfile := []byte("example.com {\n\tproxy http://127.0.0.1:8080\n}")
-	f, err := ioutil.TempFile("", "Caddyfile")
-	if err != nil {
-		t.Fatal(err)
+	tcs := []struct {
+		Name string
+		Path string
+	}{
+		{Name: "absolute path", Path: "/tmp"},
+		{Name: "relative path", Path: "./"},
 	}
-	defer os.Remove(f.Name())
+	for _, tc := range tcs {
+		t.Run(tc.Name, func(t *testing.T) {
+			f, err := ioutil.TempFile(tc.Path, "Caddyfile")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer os.Remove(f.Name())
 
-	if _, err := f.Write(caddyfile); err != nil {
-		t.Fatal(err)
+			if _, err := f.Write(caddyfile); err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Close(); err != nil {
+				t.Fatal(err)
+			}
+			c, err := NewClusterConfig(WithCaddyFile(f.Name()))
+			assert.NoError(t, err)
+			assert.Equal(t, caddyfile, c.CaddyFile)
+		})
 	}
-	if err := f.Close(); err != nil {
-		t.Fatal(err)
-	}
-	c, err := NewClusterConfig(WithCaddyFile(f.Name()))
-	assert.NoError(t, err)
-	assert.Equal(t, caddyfile, c.CaddyFile)
+
 }
 
 func TestTimeout(t *testing.T) {
@@ -135,10 +147,11 @@ func TestConfigOpts(t *testing.T) {
 		return nil
 	}
 	env := map[string]string{
-		"CADDY_CLUSTERING_ETCD_SERVERS":   "http://127.0.0.1:2379",
-		"CADDY_CLUSTERING_ETCD_PREFIX":    "/test",
-		"CADDY_CLUSTERING_ETCD_TIMEOUT":   "30m",
-		"CADDY_CLUSTERING_ETCD_CADDYFILE": f.Name(),
+		"CADDY_CLUSTERING_ETCD_SERVERS":          "http://127.0.0.1:2379",
+		"CADDY_CLUSTERING_ETCD_PREFIX":           "/test",
+		"CADDY_CLUSTERING_ETCD_TIMEOUT":          "30m",
+		"CADDY_CLUSTERING_ETCD_CADDYFILE":        f.Name(),
+		"CADDY_CLUSTERING_ETCD_CADDYFILE_LOADER": "disable",
 	}
 	env2 := map[string]string{
 		"CADDY_CLUSTERING_ETCD_SERVERS":   "http://127.0.0.1:2379",
@@ -152,7 +165,7 @@ func TestConfigOpts(t *testing.T) {
 		Expect    ClusterConfig
 		ShouldErr bool
 	}{
-		{Name: "ok", Input: env, Expect: ClusterConfig{ServerIP: []string{"http://127.0.0.1:2379"}, LockTimeout: 30 * time.Minute, KeyPrefix: "/test", CaddyFile: caddyfile}, ShouldErr: false},
+		{Name: "ok", Input: env, Expect: ClusterConfig{ServerIP: []string{"http://127.0.0.1:2379"}, LockTimeout: 30 * time.Minute, KeyPrefix: "/test", CaddyFile: caddyfile, CaddyFilePath: f.Name(), DisableCaddyLoad: true}, ShouldErr: false},
 		{Name: "should err", Input: env2, Expect: ClusterConfig{}, ShouldErr: true},
 	}
 	for _, tc := range tcs {

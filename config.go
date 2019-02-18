@@ -1,7 +1,9 @@
 package etcd
 
 import (
+	"fmt"
 	"io/ioutil"
+	"log"
 	"net/url"
 	"os"
 	"path"
@@ -14,10 +16,13 @@ import (
 // ClusterConfig maintains configuration information for cluster
 // resources such as etcd server instances
 type ClusterConfig struct {
-	KeyPrefix   string
-	ServerIP    []string
-	LockTimeout time.Duration
-	CaddyFile   []byte
+	KeyPrefix        string
+	ServerIP         []string
+	LockTimeout      time.Duration
+	CaddyFile        []byte
+	CaddyFilePath    string
+	DisableCaddyLoad bool
+	// TODO: Add roles, auth, and mutual TLS
 }
 
 // ConfigOption represents a functional option for ClusterConfig
@@ -49,10 +54,11 @@ func NewClusterConfig(opts ...ConfigOption) (*ClusterConfig, error) {
 // NewClusterConfig
 func ConfigOptsFromEnvironment() (opts []ConfigOption) {
 	var env = map[string]func(s string) ConfigOption{
-		"CADDY_CLUSTERING_ETCD_SERVERS":   WithServers,
-		"CADDY_CLUSTERING_ETCD_PREFIX":    WithPrefix,
-		"CADDY_CLUSTERING_ETCD_TIMEOUT":   WithTimeout,
-		"CADDY_CLUSTERING_ETCD_CADDYFILE": WithCaddyFile,
+		"CADDY_CLUSTERING_ETCD_SERVERS":          WithServers,
+		"CADDY_CLUSTERING_ETCD_PREFIX":           WithPrefix,
+		"CADDY_CLUSTERING_ETCD_TIMEOUT":          WithTimeout,
+		"CADDY_CLUSTERING_ETCD_CADDYFILE":        WithCaddyFile,
+		"CADDY_CLUSTERING_ETCD_CADDYFILE_LOADER": WithDisableCaddyfileLoad,
 	}
 	for e, f := range env {
 		val := os.Getenv(e)
@@ -117,14 +123,45 @@ func WithTimeout(s string) ConfigOption {
 // WithCaddyFile sets the path to the bootstrap Caddyfile to load on initial start if configuration
 // information is not already present in etcd.  The first cluster instance will load this
 // file and store it in etcd.  Subsequent members of the cluster will prioritize configuration
-// from etcd even if this file is present.
+// from etcd even if this file is present.  This function will not error even if the Caddyfile is
+// not present.  If a caddyfile cannot be read from etcd, from this file, or from the default loader,
+// caddy will start with an empty default configuration.
 func WithCaddyFile(s string) ConfigOption {
 	return func(c *ClusterConfig) error {
-		r, err := ioutil.ReadFile(path.Clean(s))
-		if err != nil {
-			return err
+		p := path.Clean(s)
+		if !strings.HasPrefix(p, "/") {
+			// assume a relative directory
+			cwd, err := os.Getwd()
+			if err != nil {
+				log.Print("[WARN] etcd: could not ready configured caddyfile source, this may not indicate a problem if another cluster member has stored this data in etcd")
+				return nil
+			}
+			p = path.Join(cwd, p)
 		}
+		r, err := ioutil.ReadFile(p)
+		if err != nil {
+			log.Print("[WARN] etcd: could not ready configured caddyfile source, this may not indicate a problem if another cluster member has stored this data in etcd")
+			return nil
+		}
+		c.CaddyFilePath = p
 		c.CaddyFile = r
 		return nil
+	}
+}
+
+// WithDisableCaddyfileLoad will skip all attempts at loading the caddyfile from etcd and force caddy to fall back
+// to other enabled caddyfile loader plugins or the default loader
+func WithDisableCaddyfileLoad(s string) ConfigOption {
+	return func(c *ClusterConfig) error {
+		val := strings.ToLower(strings.TrimSpace(s))
+		switch val {
+		case "disable":
+			c.DisableCaddyLoad = true
+			return nil
+		case "enable", "":
+			return nil
+		default:
+			return errors.New(fmt.Sprintf("CADDY_CLUSTERING_ETCD_CADDYFILE_LOADER is an invalid format: %s is an unknown option", val))
+		}
 	}
 }

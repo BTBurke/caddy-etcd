@@ -1,10 +1,11 @@
 package etcd
 
 import (
+	"log"
+
 	"github.com/mholt/caddy"
 	"github.com/mholt/caddy/caddytls"
 	"github.com/mholt/certmagic"
-	"log"
 )
 
 // ensure that cluster implements certmagic.Storage
