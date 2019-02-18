@@ -6,9 +6,11 @@ services:
 before_install:
   - ./test-docker.sh detach
 
-script:
+install:
   - go get https://github.com/mholt/caddy
   - rm -rf $GOPATH/src/github.com/mholt/caddy/vendor
   - go get -u -t
+
+script:
   - go vet
   - go test -v -cover -race
