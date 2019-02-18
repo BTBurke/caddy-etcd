@@ -1,0 +1,11 @@
+language: go
+
+services:
+  - docker
+
+before_install:
+  - ./test-docker.sh
+
+script:
+  - go get -u -t
+  - go test -v -cover -race
