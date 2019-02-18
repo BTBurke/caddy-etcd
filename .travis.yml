@@ -7,7 +7,7 @@ before_install:
   - ./test-docker.sh detach
 
 install:
-  - go get https://github.com/mholt/caddy
+  - go get github.com/mholt/caddy
   - rm -rf $GOPATH/src/github.com/mholt/caddy/vendor
   - go get -u -t
 
