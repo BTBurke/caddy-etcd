@@ -36,7 +36,7 @@ func NewClusterConfig(opts ...ConfigOption) (*ClusterConfig, error) {
 		}
 	}
 	if len(c.ServerIP) == 0 {
-		c.ServerIP = []string{"127.0.0.1:2379"}
+		c.ServerIP = []string{"http://127.0.0.1:2379"}
 	}
 
 	if len(c.CaddyFile) == 0 {

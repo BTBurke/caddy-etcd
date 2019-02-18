@@ -1,0 +1,1 @@
+export CADDY_CLUSTERING="etcd"
