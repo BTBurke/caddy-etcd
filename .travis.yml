@@ -5,8 +5,8 @@ services:
 
 before_install:
   - ./test-docker.sh detach
+  - export GO111MODULE="on"
 
 script:
-  - export GO111MODULE="on"
-  - go vet
-  - go test -v -cover -race
+  - go vet -mod vendor
+  - go test -v -cover -race -mod vendor
