@@ -8,7 +8,6 @@ before_install:
   - export GO111MODULE="on"
 
 install:
-  - go mod vendor
 
 script:
   - go vet -mod vendor
