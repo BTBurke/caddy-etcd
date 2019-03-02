@@ -1,3 +1,5 @@
+// package etcd adds clustering capabilities to caddy to store all Caddy-managed certificates
+// and caddyfile to etcd
 package etcd
 
 import (
