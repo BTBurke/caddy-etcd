@@ -25,5 +25,3 @@ require (
 	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c // indirect
 	google.golang.org/grpc v1.18.0 // indirect
 )
-
-replace go.etcd.io/etcd => ../etcd

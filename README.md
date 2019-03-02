@@ -1,6 +1,6 @@
 # caddy-etcd
 
-[![Build Status](https://travis-ci.org/BTBurke/caddy-etcd.svg?branch=master)](https://travis-ci.org/BTBurke/caddy-etcd)
+[![Build Status](https://travis-ci.com/BTBurke/caddy-etcd.svg?branch=master)](https://travis-ci.com/BTBurke/caddy-etcd)
 
 This is a clustering plugin for Caddy that will store Caddy-managed certificates and any other assets in etcd rather than the filesystem.
 
