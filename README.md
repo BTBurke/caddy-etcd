@@ -52,6 +52,12 @@ This project uses go modules and must be tested with the `-mod vendor` flag in o
 go test -v -cover -race -mod vendor
 ```
 
+Integration tests with single dockerized etcd can be run with
+
+```
+./test-docker.sh detach && go test -v -cover -race -mod vendor && docker stop etcd
+```
+
 ## Roadmap
 
 - [ ] etcd mutual TLS support
