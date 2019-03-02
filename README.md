@@ -55,7 +55,9 @@ go test -v -cover -race -mod vendor
 Integration tests with a single dockerized etcd instance can be run with
 
 ```
-./test-docker.sh detach && go test -v -cover -race -mod vendor && docker stop etcd
+./test-docker.sh detach && \
+go test -v -cover -race -mod vendor && \
+docker stop etcd
 ```
 
 ## Roadmap
