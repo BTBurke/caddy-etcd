@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 
@@ -16,6 +17,16 @@ import (
 )
 
 func init() {
+	reqd := []string{
+		"go",
+		"sed",
+	}
+	for _, req := range reqd {
+		if _, err := exec.LookPath(req); err != nil {
+			log.Fatalf("%s is required to build caddy from source with the etcd plugin", req)
+		}
+	}
+
 	var err error
 	tempDir, err = ioutil.TempDir("", "caddy")
 	if err != nil {
@@ -52,7 +63,7 @@ func Build() error {
 	mg.Deps(cloneCaddy, cloneEtcd)
 	fmt.Printf("caddy and etcd cloned to %s\n", tempDir)
 	mg.SerialDeps(insertPlugins, generateEtcd, caddyModules, checkBuild)
-	os.RemoveDir(tempDir)
+	os.RemoveAll(tempDir)
 	return nil
 }
 
