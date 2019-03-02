@@ -1,6 +1,6 @@
 # caddy-etcd
 
-[![Build Status](https://travis-ci.com/BTBurke/caddy-etcd.svg?branch=master)](https://travis-ci.com/BTBurke/caddy-etcd)
+[![Build Status](https://travis-ci.com/BTBurke/caddy-etcd.svg?branch=master)](https://travis-ci.com/BTBurke/caddy-etcd)<a href="https://godoc.org/github.com/BTBurke/caddy-etcd"><img src="https://img.shields.io/badge/godoc-reference-blue.svg"></a>
 
 This is a clustering plugin for Caddy that will store Caddy-managed certificates and any other assets in etcd rather than the filesystem.  It implements a virtual filesystem on top of etcd storage in order to allow multiple instances of caddy to share configuration information and TLS certificates without having to share a filesystem.  You must have already set up your own etcd cluster for this plugin to work.
 
