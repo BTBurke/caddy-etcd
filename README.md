@@ -22,7 +22,9 @@ you must first set `CADDY_CLUSTERING="etcd"`.**
 
 ## Building Caddy with this Plugin
 
-This plugin requires caddy to be built with go modules.  It cannot be built by the current build server on caddyserver.com because it does not support modules.  This project uses [mage](https://github.com/magefile/mage) to build the caddy binary.  To build, first download mage:
+This plugin requires caddy to be built with go modules.  **It cannot be built by the build server on caddyserver.com because it currently lacks module support.**  
+
+This project uses [mage](https://github.com/magefile/mage) to build the caddy binary.  To build, first download mage:
 
 ```
 go get -u github.com/magefile/mage
