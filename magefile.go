@@ -68,16 +68,18 @@ func Build() error {
 }
 
 func cloneCaddy() error {
+	fmt.Println("cloning caddy...")
 	dir := path.Join(tempDir, "caddy")
-	if err := sh.Run("git", "clone", "https://github.com/mholt/caddy", dir); err != nil {
+	if err := sh.Run("git", "clone", "-q", "https://github.com/mholt/caddy", dir); err != nil {
 		return errors.Wrap(err, "failed to clone caddy")
 	}
 	return nil
 }
 
 func cloneEtcd() error {
+	fmt.Println("cloning etcd...")
 	dir := path.Join(tempDir, "etcd")
-	if err := sh.Run("git", "clone", "--depth=1", "https://github.com/etcd-io/etcd", dir); err != nil {
+	if err := sh.Run("git", "clone", "-q", "--depth=1", "https://github.com/etcd-io/etcd", dir); err != nil {
 		return errors.Wrap(err, "failed to clone etcd")
 	}
 	return nil
