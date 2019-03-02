@@ -33,6 +33,7 @@ You must have the following binaries available on your system to run the build:
 ```
 go >= 1.11
 sed
+git
 ```
 
 Then build by running
