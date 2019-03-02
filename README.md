@@ -54,8 +54,6 @@ go test -v -cover -race -mod vendor
 
 ## Roadmap
 
-[ ] etcd mutual TLS support
-
-[ ] incremental Caddyfile configuration - allow new keys inserted under `<KeyPrefix>/caddyfile/` to modify the running Caddy configuration (e.g., add a new site by writing to etcd under /caddy/caddyfile/mysite with just the site's configuration)
-
-[ ] make plugin buildable on caddyserver.com
+- [ ] etcd mutual TLS support
+- [ ] incremental Caddyfile configuration - allow new keys inserted under `<KeyPrefix>/caddyfile/` to modify the running Caddy configuration (e.g., add a new site by writing to etcd under /caddy/caddyfile/mysite with just the site's configuration)
+- [ ] make plugin buildable on caddyserver.com
