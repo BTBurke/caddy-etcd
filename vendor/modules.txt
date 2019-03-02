@@ -1,13 +1,8 @@
 # github.com/cenkalti/backoff v2.1.1+incompatible
 github.com/cenkalti/backoff
-# github.com/coreos/etcd v3.3.12+incompatible
-github.com/coreos/etcd/pkg/pathutil
-github.com/coreos/etcd/pkg/srv
-github.com/coreos/etcd/pkg/types
-github.com/coreos/etcd/version
 # github.com/coreos/go-semver v0.2.0
 github.com/coreos/go-semver/semver
-# github.com/davecgh/go-spew v1.1.0
+# github.com/davecgh/go-spew v1.1.1
 github.com/davecgh/go-spew/spew
 # github.com/flynn/go-shlex v0.0.0-20150515145356-3f9db97f8568
 github.com/flynn/go-shlex
@@ -15,6 +10,9 @@ github.com/flynn/go-shlex
 github.com/google/uuid
 # github.com/klauspost/cpuid v1.2.0
 github.com/klauspost/cpuid
+# github.com/magefile/mage v1.8.0
+github.com/magefile/mage/mg
+github.com/magefile/mage/sh
 # github.com/mholt/caddy v0.11.4
 github.com/mholt/caddy
 github.com/mholt/caddy/caddytls
@@ -49,8 +47,12 @@ github.com/xenolf/lego/acme/api/internal/nonces
 github.com/xenolf/lego/acme/api/internal/secure
 github.com/xenolf/lego/acme/api/internal/sender
 github.com/xenolf/lego/challenge/dns01
-# go.etcd.io/etcd v3.3.12+incompatible
+# go.etcd.io/etcd v3.3.12+incompatible => ../etcd
 go.etcd.io/etcd/client
+go.etcd.io/etcd/pkg/pathutil
+go.etcd.io/etcd/pkg/srv
+go.etcd.io/etcd/pkg/types
+go.etcd.io/etcd/version
 # golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b
 golang.org/x/crypto/ocsp
 golang.org/x/crypto/ed25519
