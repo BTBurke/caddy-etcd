@@ -6,6 +6,10 @@ This is a clustering plugin for Caddy that will store Caddy-managed certificates
 
 ![Beta Quality](https://user-images.githubusercontent.com/414599/53683937-62878b80-3cdd-11e9-9b78-daa5ddb02bcd.png)
 
+<div style="background: blue;">
+Test
+</div>
+
 ## Configuration
 
 Caddy clustering plugins are enabled and configured through environment variables.  The table below lists the available options, but **to enable this plugin
