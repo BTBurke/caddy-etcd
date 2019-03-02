@@ -4,6 +4,8 @@
 
 This is a clustering plugin for Caddy that will store Caddy-managed certificates and any other assets in etcd rather than the filesystem.
 
+![Beta Quality](https://user-images.githubusercontent.com/414599/53683937-62878b80-3cdd-11e9-9b78-daa5ddb02bcd.png)
+
 By using this plugin, you can run multiple instances of caddy and have them share configuration information and TLS certificates.  You must have
 already set up your own etcd cluster for this plugin to work.  
 
