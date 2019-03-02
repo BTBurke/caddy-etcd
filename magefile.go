@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/magefile/mage/mg"
 	"github.com/magefile/mage/sh"
@@ -24,6 +25,11 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	version, err = sh.Output("go", "list", "-f", "{{.Version}}", "-m", "github.com/mholt/caddy")
+	fmt.Printf("Building caddy version %s\n", version)
+	if err != nil || version == "" {
+		log.Fatalf("could not determine the version of caddy to build: %v", err)
+	}
 }
 
 // declare any extra plugins here that you want built into Caddy.  The map should be the import
@@ -33,10 +39,10 @@ var plugins = map[string]string{
 }
 
 // If you plan on compiling with plugins that are not already listed on Caddyserver.com, use this
-// to declare where you want them inserted in the plugin list  Sometimes precendence of these plugins matters.
-// Use `after(<plugin>)` to declare where you want your plugin inserted.  For example, if you want to insert
-// plugin `foo` after caddy-jwt, you can use `"foo": after("jwt")`.  See the file `caddyserver/httpserver/plugin.go` for
-// the precedence list built into Caddy.
+// to declare where you want them inserted in the plugin list  Sometimes precedence of these plugins matters.
+// The key should be the name the plugin you want to add.  The value is the name of the plugin immediately
+// preceeding yours.  Example: `"etcd": "git"` will add the etcd plugin after the git entry.
+// See the file `caddyserver/httpserver/plugin.go` for the precedence list built into Caddy.
 var plugAfter = map[string]string{
 	"etcd": "git",
 }
@@ -45,15 +51,14 @@ var plugAfter = map[string]string{
 func Build() error {
 	mg.Deps(cloneCaddy, cloneEtcd)
 	fmt.Printf("caddy and etcd cloned to %s\n", tempDir)
-	mg.Deps(insertPlugins, generateEtcd)
-	mg.SerialDeps(caddyModules)
-
+	mg.SerialDeps(insertPlugins, generateEtcd, caddyModules, checkBuild)
+	os.RemoveDir(tempDir)
 	return nil
 }
 
 func cloneCaddy() error {
 	dir := path.Join(tempDir, "caddy")
-	if err := sh.Run("git", "clone", "--depth=1", "https://github.com/mholt/caddy", dir); err != nil {
+	if err := sh.Run("git", "clone", "https://github.com/mholt/caddy", dir); err != nil {
 		return errors.Wrap(err, "failed to clone caddy")
 	}
 	return nil
@@ -68,6 +73,14 @@ func cloneEtcd() error {
 }
 
 func insertPlugins() error {
+	if err := os.Chdir(path.Join(tempDir, "caddy")); err != nil {
+		return errors.Wrap(err, "could not change to caddy directory")
+	}
+	defer os.Chdir(cwd)
+	out, err := sh.Output("git", "checkout", "tags/"+version)
+	if err != nil || strings.Contains(out, "error") {
+		return errors.Wrapf(err, "chould not check out version %s: %s", version, out)
+	}
 	p := path.Join(tempDir, "caddy/caddy/caddymain/run.go")
 	for _, plug := range plugins {
 		repl := fmt.Sprintf("/This is where/a _ \"%s\"", plug)
@@ -86,23 +99,54 @@ func insertPlugins() error {
 }
 
 func generateEtcd() error {
-	if err := os.Chdir(path.Join(tempDir, "etcd")); err != nil {
+	if err := os.Chdir(path.Join(tempDir, "etcd", "client")); err != nil {
 		return errors.Wrap(err, "could not change to etcd to regenerate")
 	}
 	defer os.Chdir(cwd)
 	if err := sh.Run("go", "get", "-u", "github.com/ugorji/go/codec/codecgen"); err != nil {
 		return errors.Wrap(err, "could not update codecgen")
 	}
-	if err := sh.Run("go", "generate"); err != nil {
+	out, err := sh.Output("go", "generate", "-x")
+	if err != nil || out == "" {
 		return errors.Wrap(err, "failed to go generate new codec")
 	}
 	return nil
 }
 
 func caddyModules() error {
+	cmds := []string{
+		"go mod init github.com/mholt/caddy",
+		"go get github.com/BTBurke/caddy-etcd",
+		"go get github.com/bifurcation/mint@v0.0.0-20180715133206-93c51c6ce115",
+		"go mod vendor",
+		"go mod edit -replace github.com/BTBurke/caddy-etcd=" + cwd,
+		"go mod edit -replace go.etcd.io/etcd=../etcd",
+		"rm -rf vendor/", // temporary hack because go modules are fucked
+		"go build -o " + path.Join(cwd, "caddy") + " ./caddy/main.go",
+	}
+	if err := os.Chdir(path.Join(tempDir, "caddy")); err != nil {
+		return errors.Wrap(err, "could not change to caddy director to build")
+	}
+	defer os.Chdir(cwd)
+	for _, cmd := range cmds {
+		c := strings.Split(cmd, " ")
+		if err := sh.Run(c[0], c[1:]...); err != nil {
+			return errors.Wrapf(err, "failed to run command %s to build caddy", cmd)
+		}
+	}
+	return nil
+}
 
+func checkBuild() error {
+	out, err := sh.Output("./caddy", "-plugins")
+	if err != nil || !strings.Contains(out, "tls.cluster.etcd") {
+		return errors.Wrap(err, "build appears to have failed, could not find the tls.cluster.etcd plugin")
+	}
+	fmt.Println("\n\n\nSUCCESS! The built caddy binary should be in this directory.  You can check that the plugins were inserted successfully by running ./caddy -plugins")
+	return nil
 }
 
 // global variables to streamline magefile
 var tempDir string
 var cwd string
+var version string
